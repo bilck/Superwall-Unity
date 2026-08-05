@@ -1,6 +1,14 @@
 # Changelog
 All notable changes to this package will be documented in this file.
 
+## [0.2.6]
+
+### Dependencies
+* Android: bumped the `superwall-android` pin from 2.7.21 to 2.7.23. Transitive dependencies are unchanged (still `androidx.activity` 1.10.1 / Billing 8.0.0), so the compile SDK and `minSdk` requirements of this package are unaffected. Upstream in that range:
+  * Fixes paywall text inputs silently dropping non-Latin keyboard text (Cyrillic, Korean, Thai, emoji). The webview no longer replaces Chromium's `InputConnection` unless `isGameControllerEnabled` is set, restoring composition, autocorrect, swipe typing and autofill.
+  * Errors thrown when the user lacks billing no longer propagate to the app.
+  * The backend is always notified of purchased entitlements.
+
 ## [0.2.5]
 
 ### Fixes
