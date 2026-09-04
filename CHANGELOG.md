@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this package will be documented in this file.
 
+## [Unreleased]
+
+### Fixes
+* `SuperwallEventInfo.Product`, `.Transaction`, `.PaywallInfo`, `.Error` and `.RestoreType` were never populated on either platform: the bridges forwarded only `eventType` and the flattened `params`. The store transaction (and with it the store transaction id) was therefore unreachable from `handleSuperwallEvent`. Both bridges now serialize the associated values of the paywall and transaction events (`paywallOpen/Close/Decline`, `transactionStart/Abandon/Complete/Fail/Restore/Timeout`, `subscriptionStart`, `freeTrialStart`, `nonRecurringProductPurchase`), and the C# side reads them. Transaction dates are ISO 8601 strings, matching the existing `StoreTransaction` model.
+
 ## [0.2.6]
 
 ### Dependencies
