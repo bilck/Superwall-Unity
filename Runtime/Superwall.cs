@@ -713,7 +713,8 @@ namespace Superwall
             return exp;
         }
 
-        private static StoreProduct DeserializeStoreProduct(Dictionary<string, object> dict)
+        // Also used by BridgeCallbackHandler for the `product` carried on delegate events.
+        internal static StoreProduct DeserializeStoreProduct(Dictionary<string, object> dict)
         {
             if (dict == null) return new StoreProduct();
             var p = new StoreProduct();
