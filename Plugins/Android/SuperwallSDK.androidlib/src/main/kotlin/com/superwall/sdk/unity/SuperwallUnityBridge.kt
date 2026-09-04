@@ -18,6 +18,9 @@ import com.superwall.sdk.identity.setUserAttributes
 import com.superwall.sdk.logger.LogLevel
 import com.superwall.sdk.logger.LogScope
 import com.superwall.sdk.models.entitlements.Entitlement
+import com.superwall.sdk.models.product.Store
+import com.superwall.sdk.store.abstractions.product.receipt.LatestPeriodType
+import com.superwall.sdk.store.abstractions.product.receipt.LatestSubscriptionState
 import com.superwall.sdk.models.entitlements.SubscriptionStatus
 import com.superwall.sdk.models.triggers.Experiment
 import com.superwall.sdk.models.customer.CustomerInfo
@@ -692,11 +695,61 @@ class SuperwallUnityBridge {
         })
     }
 
+    // Mirrors every field of the C# `Entitlement` model (see Runtime/Models/Entitlement.cs), which
+    // `BridgeCallbackHandler.DeserializeEntitlement` already reads. Enum values are emitted under the
+    // C# member names (parsed case-insensitively), so the wire shape matches the iOS bridge and a
+    // consumer sees one vocabulary. Dates are epoch milliseconds. Optional fields are omitted rather
+    // than sent as null so the C# nullable stays null.
     private fun serializeEntitlement(e: Entitlement) = JSONObject().apply {
         put("id", e.id)
-        put("type", "serviceLevel")
+        put("type", serializeEntitlementType(e.type))
         put("isActive", e.isActive)
         put("productIds", JSONArray(e.productIds.toList()))
+        e.latestProductId?.let { put("latestProductId", it) }
+        e.store?.let { put("store", serializeStore(it)) }
+        e.startsAt?.let { put("startsAt", it.time) }
+        e.renewedAt?.let { put("renewedAt", it.time) }
+        e.expiresAt?.let { put("expiresAt", it.time) }
+        e.isLifetime?.let { put("isLifetime", it) }
+        e.willRenew?.let { put("willRenew", it) }
+        serializeSubscriptionState(e.state)?.let { put("state", it) }
+        serializeOfferType(e.offerType)?.let { put("offerType", it) }
+    }
+
+    private fun serializeEntitlementType(type: Entitlement.Type) = when (type) {
+        Entitlement.Type.SERVICE_LEVEL -> "serviceLevel"
+    }
+
+    private fun serializeStore(store: Store) = when (store) {
+        Store.PLAY_STORE -> "playStore"
+        Store.APP_STORE -> "appStore"
+        Store.STRIPE -> "stripe"
+        Store.PADDLE -> "paddle"
+        Store.SUPERWALL -> "superwall"
+        Store.OTHER -> "other"
+    }
+
+    // `UNKNOWN` has no C# counterpart and is dropped, leaving `Entitlement.State` null.
+    private fun serializeSubscriptionState(state: LatestSubscriptionState?) = when (state) {
+        LatestSubscriptionState.GRACE_PERIOD -> "inGracePeriod"
+        LatestSubscriptionState.SUBSCRIBED -> "subscribed"
+        LatestSubscriptionState.EXPIRED -> "expired"
+        LatestSubscriptionState.BILLING_RETRY -> "inBillingRetryPeriod"
+        LatestSubscriptionState.REVOKED -> "revoked"
+        LatestSubscriptionState.UNKNOWN, null -> null
+    }
+
+    // The C# `LatestSubscriptionOfferType` has Trial, Code, Promotional and Winback. The remaining
+    // Android values are sent through under their own names; the C# parser leaves `OfferType` null
+    // for them rather than mislabelling a paid period as an offer.
+    private fun serializeOfferType(type: LatestPeriodType?) = when (type) {
+        LatestPeriodType.TRIAL -> "trial"
+        LatestPeriodType.CODE -> "code"
+        LatestPeriodType.PROMOTIONAL -> "promotional"
+        LatestPeriodType.WINBACK -> "winback"
+        LatestPeriodType.SUBSCRIPTION -> "subscription"
+        LatestPeriodType.REVOKED -> "revoked"
+        null -> null
     }
 
     private fun serializeEntitlementSet(set: Set<Entitlement>) = JSONArray().apply {

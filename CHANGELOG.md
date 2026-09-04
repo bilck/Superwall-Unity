@@ -5,6 +5,7 @@ All notable changes to this package will be documented in this file.
 
 ### Fixes
 * `SuperwallEventInfo.EventType` was never populated: iOS serialized `String(describing: event)`, which on SuperwallKit versions without a `CustomStringConvertible` conformance dumps the case together with its associated values (`transactionComplete(transaction: ..., product: ...)`), and Android sends the snake_case `rawName` (`transaction_complete`). Neither matched the `EventType` enum, so every delegate event arrived as the default `FirstSeen` and any `switch` on it was dead. iOS now emits only the case name, and the C# parser accepts both camelCase and snake_case, logging a warning instead of failing silently when a name is still unknown.
+* Both native bridges serialized only 4 of the 13 fields of an `Entitlement` (`id`, a hardcoded `type`, `isActive`, `productIds`), so `LatestProductId`, `Store`, `StartsAt`, `RenewedAt`, `ExpiresAt`, `IsLifetime`, `WillRenew`, `State` and `OfferType` were always null on the C# side even though `DeserializeEntitlement` reads them. A consumer could not tell a trial from a paid subscription, nor read an expiry or renewal state, from the entitlement. Every field is now emitted on iOS and Android with one shared vocabulary (enum case names matching the C# enums, dates as epoch milliseconds).
 
 ## [0.2.6]
 
