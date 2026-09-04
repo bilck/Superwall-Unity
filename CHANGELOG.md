@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this package will be documented in this file.
 
+## [Unreleased]
+
+### Fixes
+* `SuperwallEventInfo.EventType` was never populated: iOS serialized `String(describing: event)`, which on SuperwallKit versions without a `CustomStringConvertible` conformance dumps the case together with its associated values (`transactionComplete(transaction: ..., product: ...)`), and Android sends the snake_case `rawName` (`transaction_complete`). Neither matched the `EventType` enum, so every delegate event arrived as the default `FirstSeen` and any `switch` on it was dead. iOS now emits only the case name, and the C# parser accepts both camelCase and snake_case, logging a warning instead of failing silently when a name is still unknown.
+
 ## [0.2.6]
 
 ### Dependencies

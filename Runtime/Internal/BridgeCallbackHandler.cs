@@ -254,6 +254,18 @@ namespace Superwall.Internal
             return null;
         }
 
+        /// <summary>
+        /// The two native bridges do not agree on the shape of an event name: iOS sends the Swift case
+        /// name (camelCase) and Android sends <c>SuperwallEvent.rawName</c>, which is snake_case
+        /// (<c>transaction_complete</c>, <c>freeTrial_start</c>). Stripping underscores makes both match
+        /// the PascalCase <see cref="EventType"/> members under a case-insensitive parse.
+        /// </summary>
+        internal static EventType? ParseEventType(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return null;
+            return ParseEnum<EventType>(value) ?? ParseEnum<EventType>(value.Replace("_", string.Empty));
+        }
+
         internal static SubscriptionStatus DeserializeSubscriptionStatus(Dictionary<string, object> data)
         {
             if (data == null) return SubscriptionStatus.CreateUnknown();
@@ -540,10 +552,11 @@ namespace Superwall.Internal
             var eventTypeStr = GetString(data, "eventType");
             if (eventTypeStr != null)
             {
-                // Try to parse the event type string to the enum
-                var parsed = ParseEnum<EventType>(eventTypeStr);
+                var parsed = ParseEventType(eventTypeStr);
                 if (parsed.HasValue)
                     info.EventType = parsed.Value;
+                else
+                    Debug.LogWarning($"[Superwall] Unrecognised eventType '{eventTypeStr}'; leaving EventType at its default. Handlers switching on it will not run for this event.");
             }
 
             var paramsDict = GetDict(data, "params");

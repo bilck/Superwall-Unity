@@ -292,8 +292,18 @@ private func serializeEventInfo(_ info: SuperwallEventInfo) -> [String: Any] {
     var dict: [String: Any] = [
         "params": info.params
     ]
-    // Use the string representation of the event
-    dict["eventType"] = String(describing: info.event)
+    // `String(describing:)` is not a stable name for this enum. Recent SuperwallKit releases make
+    // `SuperwallEvent` CustomStringConvertible and describe it as its snake_case placement name
+    // ("transaction_complete"), but older 4.x releases fall back to Swift's default description,
+    // which for a case with associated values is the whole payload:
+    //
+    //     transactionComplete(transaction: Optional(SuperwallKit.StoreTransaction), product: ..., ...)
+    //
+    // That never matched the C# `EventType` enum, so every delegate event arrived typed as the
+    // default (`FirstSeen`). Keep only the leading identifier: both shapes then parse on the C# side,
+    // which also normalises Android's snake_case `rawName`.
+    let described = String(describing: info.event)
+    dict["eventType"] = String(described.prefix(while: { $0 != "(" }))
     return dict
 }
 
