@@ -256,14 +256,25 @@ namespace Superwall.Internal
 
         /// <summary>
         /// The two native bridges do not agree on the shape of an event name: iOS sends the Swift case
-        /// name (camelCase) and Android sends <c>SuperwallEvent.rawName</c>, which is snake_case
-        /// (<c>transaction_complete</c>, <c>freeTrial_start</c>). Stripping underscores makes both match
-        /// the PascalCase <see cref="EventType"/> members under a case-insensitive parse.
+        /// name (camelCase) or, on newer SuperwallKit, the snake_case placement name; Android sends
+        /// <c>SuperwallEvent.rawName</c>, which is snake_case (<c>transaction_complete</c>,
+        /// <c>freeTrial_start</c>). Stripping underscores makes all of them match the PascalCase
+        /// <see cref="EventType"/> members under a case-insensitive parse. Two placement names differ from
+        /// the member that was chosen for them and are mapped explicitly.
         /// </summary>
         internal static EventType? ParseEventType(string value)
         {
             if (string.IsNullOrEmpty(value)) return null;
-            return ParseEnum<EventType>(value) ?? ParseEnum<EventType>(value.Replace("_", string.Empty));
+
+            var parsed = ParseEnum<EventType>(value) ?? ParseEnum<EventType>(value.Replace("_", string.Empty));
+            if (parsed.HasValue) return parsed;
+
+            switch (value.Replace("_", string.Empty).ToLowerInvariant())
+            {
+                case "deeplinkopen": return EventType.DeepLink;
+                case "paywallwebviewloadprocessterminated": return EventType.PaywallWebviewProcessTerminated;
+                default: return null;
+            }
         }
 
         internal static SubscriptionStatus DeserializeSubscriptionStatus(Dictionary<string, object> data)
