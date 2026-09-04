@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this package will be documented in this file.
 
+## [Unreleased]
+
+### Fixes
+* Both native bridges serialized only 4 of the 13 fields of an `Entitlement` (`id`, a hardcoded `type`, `isActive`, `productIds`), so `LatestProductId`, `Store`, `StartsAt`, `RenewedAt`, `ExpiresAt`, `IsLifetime`, `WillRenew`, `State` and `OfferType` were always null on the C# side even though `DeserializeEntitlement` reads them. A consumer could not tell a trial from a paid subscription, nor read an expiry or renewal state, from the entitlement. Every field is now emitted on iOS and Android with one shared vocabulary (enum case names matching the C# enums, dates as epoch milliseconds).
+
 ## [0.2.6]
 
 ### Dependencies

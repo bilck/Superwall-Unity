@@ -157,13 +157,51 @@ private func serializeExperiment(_ experiment: Experiment?) -> [String: Any]? {
     ]
 }
 
+private func epochMilliseconds(_ date: Date) -> Int64 {
+    return Int64((date.timeIntervalSince1970 * 1000).rounded())
+}
+
+// Mirrors every field of the C# `Entitlement` model (see Runtime/Models/Entitlement.cs), which
+// `BridgeCallbackHandler.DeserializeEntitlement` already reads. Enum values are emitted as their
+// case names, which the C# side parses case-insensitively (`playStore` -> `ProductStore.PlayStore`,
+// `inGracePeriod` -> `LatestSubscriptionState.InGracePeriod`, `trial` ->
+// `LatestSubscriptionOfferType.Trial`). Dates are epoch milliseconds. Optional fields are omitted
+// rather than sent as null so the C# nullable stays null.
 private func serializeEntitlement(_ entitlement: Entitlement) -> [String: Any] {
-    return [
+    var dict: [String: Any] = [
         "id": entitlement.id,
-        "type": "serviceLevel",
+        "type": String(describing: entitlement.type),
         "isActive": entitlement.isActive,
         "productIds": Array(entitlement.productIds)
     ]
+    if let latestProductId = entitlement.latestProductId {
+        dict["latestProductId"] = latestProductId
+    }
+    if let store = entitlement.store {
+        dict["store"] = String(describing: store)
+    }
+    if let startsAt = entitlement.startsAt {
+        dict["startsAt"] = epochMilliseconds(startsAt)
+    }
+    if let renewedAt = entitlement.renewedAt {
+        dict["renewedAt"] = epochMilliseconds(renewedAt)
+    }
+    if let expiresAt = entitlement.expiresAt {
+        dict["expiresAt"] = epochMilliseconds(expiresAt)
+    }
+    if let isLifetime = entitlement.isLifetime {
+        dict["isLifetime"] = isLifetime
+    }
+    if let willRenew = entitlement.willRenew {
+        dict["willRenew"] = willRenew
+    }
+    if let state = entitlement.state {
+        dict["state"] = state.rawValue
+    }
+    if let offerType = entitlement.offerType {
+        dict["offerType"] = offerType.rawValue
+    }
+    return dict
 }
 
 private func serializeEntitlements(_ entitlements: Set<Entitlement>) -> [[String: Any]] {
