@@ -883,8 +883,13 @@ public func _SuperwallBridge_RegisterPlacement(
                 "paywallInfo": serializePaywallInfo(info)
             ]
             switch result {
-            case .purchased(let productId):
-                data["result"] = ["type": "purchased", "productId": productId]
+            // `PaywallResult.purchased` carries a `StoreProduct`, not a `String` — the old binding name
+            // was misleading. Passing the object straight into the payload meant JSON serialization
+            // received a non-JSON leaf and fell back to its debug description, so Unity was handed
+            // "<SWKStoreProduct: 0x14f80a980>" as `productId`. Any consumer matching that against a store
+            // catalogue (revenue reporting, receipt lookup) finds nothing and silently drops the purchase.
+            case .purchased(let product):
+                data["result"] = ["type": "purchased", "productId": product.productIdentifier]
             case .declined:
                 data["result"] = ["type": "declined"]
             case .restored:
