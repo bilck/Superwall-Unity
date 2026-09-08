@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 using Superwall.Internal;
 
@@ -708,6 +709,27 @@ namespace Superwall
             return exp;
         }
 
+        /// <summary>
+        /// Parses a bridge number that may arrive as a JSON number (iOS) or as a string (Android sends
+        /// <c>BigDecimal.toString()</c>, e.g. "199.99"). <c>Convert.ToDouble(object)</c> parses strings with the
+        /// device culture, so on a pt-BR or de-DE device "199.99" became 19999. Always invariant.
+        /// </summary>
+        private static double ToDoubleInvariant(object value)
+        {
+            switch (value)
+            {
+                case null: return 0;
+                case double d: return d;
+                case float f: return f;
+                case int i: return i;
+                case long l: return l;
+                case string text:
+                    return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed) ? parsed : 0;
+                default:
+                    return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            }
+        }
+
         private static StoreProduct DeserializeStoreProduct(Dictionary<string, object> dict)
         {
             if (dict == null) return new StoreProduct();
@@ -734,7 +756,7 @@ namespace Superwall
             p.TrialPeriodEndDate = dict.ContainsKey("trialPeriodEndDate") ? dict["trialPeriodEndDate"] as string : null;
             p.TrialPeriodEndDateString = dict.ContainsKey("trialPeriodEndDateString") ? dict["trialPeriodEndDateString"] as string : null;
             p.LocalizedTrialPeriodPrice = dict.ContainsKey("localizedTrialPeriodPrice") ? dict["localizedTrialPeriodPrice"] as string : null;
-            p.TrialPeriodPrice = dict.ContainsKey("trialPeriodPrice") ? Convert.ToDouble(dict["trialPeriodPrice"]) : 0;
+            p.TrialPeriodPrice = dict.ContainsKey("trialPeriodPrice") ? ToDoubleInvariant(dict["trialPeriodPrice"]) : 0;
             p.TrialPeriodDays = dict.ContainsKey("trialPeriodDays") ? Convert.ToInt32(dict["trialPeriodDays"]) : 0;
             p.TrialPeriodDaysString = dict.ContainsKey("trialPeriodDaysString") ? dict["trialPeriodDaysString"] as string : null;
             p.TrialPeriodWeeks = dict.ContainsKey("trialPeriodWeeks") ? Convert.ToInt32(dict["trialPeriodWeeks"]) : 0;
@@ -750,7 +772,7 @@ namespace Superwall
             p.CurrencyCode = dict.ContainsKey("currencyCode") ? dict["currencyCode"] as string : null;
             p.IsFamilyShareable = dict.ContainsKey("isFamilyShareable") && dict["isFamilyShareable"] is bool ifs && ifs;
             p.RegionCode = dict.ContainsKey("regionCode") ? dict["regionCode"] as string : null;
-            p.Price = dict.ContainsKey("price") ? Convert.ToDouble(dict["price"]) : 0;
+            p.Price = dict.ContainsKey("price") ? ToDoubleInvariant(dict["price"]) : 0;
 
             if (dict.ContainsKey("entitlements") && dict["entitlements"] is List<object> entList)
             {
