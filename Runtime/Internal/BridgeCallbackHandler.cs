@@ -254,6 +254,29 @@ namespace Superwall.Internal
             return null;
         }
 
+        /// <summary>
+        /// The two native bridges do not agree on the shape of an event name: iOS sends the Swift case
+        /// name (camelCase) or, on newer SuperwallKit, the snake_case placement name; Android sends
+        /// <c>SuperwallEvent.rawName</c>, which is snake_case (<c>transaction_complete</c>,
+        /// <c>freeTrial_start</c>). Stripping underscores makes all of them match the PascalCase
+        /// <see cref="EventType"/> members under a case-insensitive parse. Two placement names differ from
+        /// the member that was chosen for them and are mapped explicitly.
+        /// </summary>
+        internal static EventType? ParseEventType(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return null;
+
+            var parsed = ParseEnum<EventType>(value) ?? ParseEnum<EventType>(value.Replace("_", string.Empty));
+            if (parsed.HasValue) return parsed;
+
+            switch (value.Replace("_", string.Empty).ToLowerInvariant())
+            {
+                case "deeplinkopen": return EventType.DeepLink;
+                case "paywallwebviewloadprocessterminated": return EventType.PaywallWebviewProcessTerminated;
+                default: return null;
+            }
+        }
+
         private static SubscriptionStatus DeserializeSubscriptionStatus(Dictionary<string, object> data)
         {
             if (data == null) return SubscriptionStatus.CreateUnknown();
@@ -540,10 +563,11 @@ namespace Superwall.Internal
             var eventTypeStr = GetString(data, "eventType");
             if (eventTypeStr != null)
             {
-                // Try to parse the event type string to the enum
-                var parsed = ParseEnum<EventType>(eventTypeStr);
+                var parsed = ParseEventType(eventTypeStr);
                 if (parsed.HasValue)
                     info.EventType = parsed.Value;
+                else
+                    Debug.LogWarning($"[Superwall] Unrecognised eventType '{eventTypeStr}'; leaving EventType at its default. Handlers switching on it will not run for this event.");
             }
 
             var paramsDict = GetDict(data, "params");
