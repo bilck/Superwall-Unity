@@ -277,7 +277,22 @@ namespace Superwall
         ReviewRequested,
         PermissionRequested,
         PermissionGranted,
-        PermissionDenied
+        PermissionDenied,
+        // Names both native SDKs emit (SuperwallKit 4.16 / superwall-android 2.7) that had no member here,
+        // so they were reported with a warning and left at the default. Appended, never reordered: the
+        // enum is serialized by name, not by value, but consumers may still persist the ordinal.
+        PaywallPageView,
+        TestModeModalOpen,
+        TestModeModalClose,
+        CelExpressionResult,
+        ErrorThrown,
+        ReviewGranted,
+        ReviewDenied,
+        AttributionMatch,
+        StripeCheckoutStart,
+        StripeCheckoutSubmit,
+        StripeCheckoutComplete,
+        StripeCheckoutFail
     }
 
     [Serializable]
