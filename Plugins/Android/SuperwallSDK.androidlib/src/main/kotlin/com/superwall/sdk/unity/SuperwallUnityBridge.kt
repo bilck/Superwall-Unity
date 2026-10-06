@@ -80,17 +80,6 @@ class SuperwallUnityBridge {
             } catch (_: Exception) {}
         }
 
-        fun serializeSubscriptionStatus(status: SubscriptionStatus) = JSONObject().apply {
-            when (status) {
-                is SubscriptionStatus.Active -> {
-                    put("type", "active")
-                    put("entitlements", serializeEntitlementSet(status.entitlements))
-                }
-                is SubscriptionStatus.Inactive -> put("type", "inactive")
-                is SubscriptionStatus.Unknown -> put("type", "unknown")
-            }
-        }
-
         // Bridge-level option with no native counterpart; see PaywallOptions.HideAndroidSystemBars in C#.
         // The paywall is its own Activity, so the host's immersive flags do not reach it, and the SDK's
         // edge-to-edge handling pads only the bottom inset - in landscape the navigation bar sits on a side
@@ -271,6 +260,17 @@ class SuperwallUnityBridge {
         scope.launch {
             val info = Superwall.instance.getCustomerInfo()
             sendAsyncResponse(callbackId, serializeCustomerInfo(info))
+        }
+    }
+
+    private fun serializeSubscriptionStatus(status: SubscriptionStatus) = JSONObject().apply {
+        when (status) {
+            is SubscriptionStatus.Active -> {
+                put("type", "active")
+                put("entitlements", serializeEntitlementSet(status.entitlements))
+            }
+            is SubscriptionStatus.Inactive -> put("type", "inactive")
+            is SubscriptionStatus.Unknown -> put("type", "unknown")
         }
     }
 
