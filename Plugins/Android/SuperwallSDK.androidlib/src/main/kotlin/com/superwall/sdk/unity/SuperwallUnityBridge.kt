@@ -85,16 +85,6 @@ class SuperwallUnityBridge {
             } catch (_: Exception) {}
         }
 
-        fun serializeSubscriptionStatus(status: SubscriptionStatus) = JSONObject().apply {
-            when (status) {
-                is SubscriptionStatus.Active -> {
-                    put("type", "active")
-                    put("entitlements", serializeEntitlementSet(status.entitlements))
-                }
-                is SubscriptionStatus.Inactive -> put("type", "inactive")
-                is SubscriptionStatus.Unknown -> put("type", "unknown")
-            }
-        }
     }
 
     fun configure(apiKey: String, optionsJson: String?, hasPurchaseController: Boolean, completionCallbackId: String?) {
@@ -244,6 +234,17 @@ class SuperwallUnityBridge {
         scope.launch {
             val info = Superwall.instance.getCustomerInfo()
             sendAsyncResponse(callbackId, serializeCustomerInfo(info))
+        }
+    }
+
+    private fun serializeSubscriptionStatus(status: SubscriptionStatus) = JSONObject().apply {
+        when (status) {
+            is SubscriptionStatus.Active -> {
+                put("type", "active")
+                put("entitlements", serializeEntitlementSet(status.entitlements))
+            }
+            is SubscriptionStatus.Inactive -> put("type", "inactive")
+            is SubscriptionStatus.Unknown -> put("type", "unknown")
         }
     }
 
