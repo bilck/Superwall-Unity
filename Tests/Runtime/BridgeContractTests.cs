@@ -3,6 +3,7 @@ using UnityEngine.TestTools;
 using NUnit.Framework;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Superwall;
 using Superwall.Internal;
 
@@ -472,6 +473,144 @@ namespace Superwall.Tests
             Assert.AreEqual(FeatureGatingBehavior.Gated, captured.FeatureGatingBehavior);
             Assert.AreEqual(PaywallCloseReason.ManualClose, captured.CloseReason);
             Assert.AreEqual(0.123, captured.ResponseLoadDuration.Value, 0.0001);
+        }
+        // --- Purchase controller contract ---
+
+        private static string PurchaseRequest(string method, string callbackId) =>
+            Json.Serialize(new Dictionary<string, object>
+            {
+                { "method", method },
+                { "data", new Dictionary<string, object>
+                    {
+                        { "productId", "com.app.monthly" },
+                        { "basePlanId", "" },
+                        { "offerId", "" },
+                        { "callbackId", callbackId }
+                    }
+                }
+            });
+
+        [UnityTest]
+        public IEnumerator PurchaseController_GooglePlayThrows_RepliesFailed()
+        {
+            // Regression: a throwing controller used to be logged without a reply, leaving the
+            // native purchase controller awaiting forever (endless spinner on the paywall).
+            BridgeCallbackHandler.Initialize();
+            yield return null;
+            BridgeCallbackHandler.Instance.PurchaseController = new MockPurchaseControllerContract
+            {
+                Throw = true
+            };
+
+            LogAssert.Expect(LogType.Error, new Regex("PurchaseFromGooglePlay threw"));
+            LogAssert.Expect(LogType.Log,
+                new Regex(@"RespondToPurchaseController\(callbackId=cb-throw,.*""type"":""failed"""));
+            BridgeCallbackHandler.Instance.OnCallback(PurchaseRequest("purchaseFromGooglePlay", "cb-throw"));
+            yield return null;
+
+            BridgeCallbackHandler.Instance.PurchaseController = null;
+        }
+
+        [UnityTest]
+        public IEnumerator PurchaseController_RestoreThrows_RepliesFailed()
+        {
+            BridgeCallbackHandler.Initialize();
+            yield return null;
+            BridgeCallbackHandler.Instance.PurchaseController = new MockPurchaseControllerContract
+            {
+                Throw = true
+            };
+
+            LogAssert.Expect(LogType.Error, new Regex("RestorePurchases threw"));
+            LogAssert.Expect(LogType.Log,
+                new Regex(@"RespondToRestorePurchases\(callbackId=cb-restore-throw,.*""type"":""failed"""));
+            BridgeCallbackHandler.Instance.OnCallback(PurchaseRequest("restorePurchases", "cb-restore-throw"));
+            yield return null;
+
+            BridgeCallbackHandler.Instance.PurchaseController = null;
+        }
+
+        [UnityTest]
+        public IEnumerator PurchaseController_LateResultAfterCancellation_IsNotSentToNative()
+        {
+            // Native abandons a request when its awaiting coroutine is cancelled and tells C#
+            // via purchaseCancelled. A completion arriving afterwards must not be reported.
+            BridgeCallbackHandler.Initialize();
+            yield return null;
+            var controller = new MockPurchaseControllerContract();
+            BridgeCallbackHandler.Instance.PurchaseController = controller;
+
+            BridgeCallbackHandler.Instance.OnCallback(PurchaseRequest("purchaseFromGooglePlay", "cb-late"));
+            Assert.IsNotNull(controller.PendingPurchase, "Controller must receive the request");
+
+            BridgeCallbackHandler.Instance.OnCallback(Json.Serialize(new Dictionary<string, object>
+            {
+                { "method", "purchaseCancelled" },
+                { "data", new Dictionary<string, object> { { "callbackId", "cb-late" } } }
+            }));
+
+            var replies = new List<string>();
+            Application.LogCallback capture = (message, _, __) =>
+            {
+                if (message.Contains("callbackId=cb-late")) replies.Add(message);
+            };
+            Application.logMessageReceived += capture;
+            LogAssert.Expect(LogType.Warning, new Regex("Ignoring late purchase result.*cb-late"));
+            controller.PendingPurchase(PurchaseResult.Purchased());
+            Application.logMessageReceived -= capture;
+            yield return null;
+
+            Assert.IsEmpty(replies, "A cancelled request's result must not be sent to native");
+            BridgeCallbackHandler.Instance.PurchaseController = null;
+        }
+
+        [UnityTest]
+        public IEnumerator PurchaseController_RequestAfterCancellation_IsNotStarted()
+        {
+            BridgeCallbackHandler.Initialize();
+            yield return null;
+            var controller = new MockPurchaseControllerContract();
+            BridgeCallbackHandler.Instance.PurchaseController = controller;
+
+            BridgeCallbackHandler.Instance.OnCallback(Json.Serialize(new Dictionary<string, object>
+            {
+                { "method", "restoreCancelled" },
+                { "data", new Dictionary<string, object> { { "callbackId", "cb-stale" } } }
+            }));
+            LogAssert.Expect(LogType.Warning, new Regex("Skipping purchase controller request cb-stale"));
+            BridgeCallbackHandler.Instance.OnCallback(PurchaseRequest("restorePurchases", "cb-stale"));
+            yield return null;
+
+            Assert.IsNull(controller.PendingRestore, "A cancelled request must not reach the controller");
+            BridgeCallbackHandler.Instance.PurchaseController = null;
+        }
+    }
+
+    /// <summary>
+    /// Purchase controller that captures completions so tests can complete them later, or throws.
+    /// </summary>
+    class MockPurchaseControllerContract : IPurchaseController
+    {
+        public bool Throw;
+        public System.Action<PurchaseResult> PendingPurchase;
+        public System.Action<RestorationResult> PendingRestore;
+
+        public void PurchaseFromAppStore(string productId, System.Action<PurchaseResult> completion)
+        {
+            if (Throw) throw new System.InvalidOperationException("boom");
+            PendingPurchase = completion;
+        }
+
+        public void PurchaseFromGooglePlay(string productId, string basePlanId, string offerId, System.Action<PurchaseResult> completion)
+        {
+            if (Throw) throw new System.InvalidOperationException("boom");
+            PendingPurchase = completion;
+        }
+
+        public void RestorePurchases(System.Action<RestorationResult> completion)
+        {
+            if (Throw) throw new System.InvalidOperationException("boom");
+            PendingRestore = completion;
         }
     }
 

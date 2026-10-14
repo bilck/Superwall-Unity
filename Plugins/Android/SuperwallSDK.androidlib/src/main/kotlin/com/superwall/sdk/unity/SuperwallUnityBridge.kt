@@ -57,14 +57,24 @@ class SuperwallUnityBridge {
         private var unityPurchaseController: UnityPurchaseController? = null
         private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-        private fun sendToUnity(method: String, data: JSONObject) {
-            try {
+        private const val TAG = "SuperwallUnity"
+
+        // Returns false if the message could not be handed to Unity. Most callers ignore
+        // this; the purchase controller uses it so it never awaits a request C# never got.
+        private fun sendToUnity(method: String, data: JSONObject): Boolean {
+            return try {
                 val payload = JSONObject()
                 payload.put("method", method)
                 payload.put("data", data)
                 UnityPlayer.UnitySendMessage("SuperwallBridge", "OnCallback", payload.toString())
+                true
             } catch (e: Exception) {
-                // Ignore send failures
+                android.util.Log.w(TAG, "Failed to send '$method' to Unity", e)
+                false
+            } catch (e: LinkageError) {
+                // UnsatisfiedLinkError when the Unity player library isn't loaded.
+                android.util.Log.w(TAG, "Failed to send '$method' to Unity", e)
+                false
             }
         }
 
@@ -466,6 +476,13 @@ class SuperwallUnityBridge {
             RestorationResult.Failed(Throwable("Invalid restoration result JSON: ${e.message}"))
         }
         controller.completeRestore(callbackId, result)
+    }
+
+    // Called synchronously by C# before it runs a purchase/restore request. A request can sit
+    // in Unity's message queue after native gave up on it; C# must not start a store
+    // transaction for it then.
+    fun isPurchaseControllerRequestPending(callbackId: String): Boolean {
+        return unityPurchaseController?.isPending(callbackId) ?: false
     }
 
     fun purchase(productId: String, callbackId: String) {
@@ -1089,6 +1106,10 @@ class SuperwallUnityBridge {
     private class UnityPurchaseController : PurchaseController {
         private val pendingPurchases = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<PurchaseResult>>()
         private val pendingRestores = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<RestorationResult>>()
+        // Bounded, insertion-ordered record of callbackIds whose awaiting coroutine was cancelled.
+        private val abandonedCallbackIds = object : LinkedHashMap<String, Unit>() {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Unit>?): Boolean = size > 32
+        }
 
         override suspend fun purchase(
             activity: Activity,
@@ -1100,17 +1121,25 @@ class SuperwallUnityBridge {
             val deferred = CompletableDeferred<PurchaseResult>()
             pendingPurchases[callbackId] = deferred
 
-            sendToUnity("purchaseFromGooglePlay", JSONObject().apply {
+            val sent = sendToUnity("purchaseFromGooglePlay", JSONObject().apply {
                 put("productId", productDetails.productId)
                 put("basePlanId", basePlanId ?: "")
                 put("offerId", offerId ?: "")
                 put("callbackId", callbackId)
             })
+            if (!sent) {
+                // C# never got the request, so no reply will ever come.
+                pendingPurchases.remove(callbackId)
+                return PurchaseResult.Failed("Could not deliver purchase request to Unity")
+            }
 
+            // No timeout on purpose: a store transaction can legitimately take minutes.
             return try {
                 deferred.await()
             } catch (t: Throwable) {
-                pendingPurchases.remove(callbackId)
+                if (pendingPurchases.remove(callbackId) != null) {
+                    abandon(callbackId, "purchaseCancelled")
+                }
                 PurchaseResult.Failed(t.message ?: "Purchase cancelled")
             }
         }
@@ -1120,24 +1149,61 @@ class SuperwallUnityBridge {
             val deferred = CompletableDeferred<RestorationResult>()
             pendingRestores[callbackId] = deferred
 
-            sendToUnity("restorePurchases", JSONObject().apply {
+            val sent = sendToUnity("restorePurchases", JSONObject().apply {
                 put("callbackId", callbackId)
             })
+            if (!sent) {
+                pendingRestores.remove(callbackId)
+                return RestorationResult.Failed(Throwable("Could not deliver restore request to Unity"))
+            }
 
             return try {
                 deferred.await()
             } catch (t: Throwable) {
-                pendingRestores.remove(callbackId)
+                if (pendingRestores.remove(callbackId) != null) {
+                    abandon(callbackId, "restoreCancelled")
+                }
                 RestorationResult.Failed(t)
             }
         }
 
         fun completePurchase(callbackId: String, result: PurchaseResult) {
-            pendingPurchases.remove(callbackId)?.complete(result)
+            val deferred = pendingPurchases.remove(callbackId)
+            if (deferred == null) {
+                logUnmatchedReply("purchase", callbackId)
+                return
+            }
+            deferred.complete(result)
         }
 
         fun completeRestore(callbackId: String, result: RestorationResult) {
-            pendingRestores.remove(callbackId)?.complete(result)
+            val deferred = pendingRestores.remove(callbackId)
+            if (deferred == null) {
+                logUnmatchedReply("restore", callbackId)
+                return
+            }
+            deferred.complete(result)
+        }
+
+        fun isPending(callbackId: String): Boolean =
+            pendingPurchases.containsKey(callbackId) || pendingRestores.containsKey(callbackId)
+
+        // The awaiting coroutine was cancelled (e.g. paywall dismissed). Remember the id so a
+        // late reply is recognised, and tell C# so it neither starts nor reports this request.
+        private fun abandon(callbackId: String, method: String) {
+            synchronized(abandonedCallbackIds) { abandonedCallbackIds[callbackId] = Unit }
+            sendToUnity(method, JSONObject().apply { put("callbackId", callbackId) })
+        }
+
+        private fun logUnmatchedReply(kind: String, callbackId: String) {
+            val abandoned = synchronized(abandonedCallbackIds) {
+                abandonedCallbackIds.remove(callbackId) != null
+            }
+            if (abandoned) {
+                android.util.Log.w(TAG, "Ignoring late $kind result for abandoned request $callbackId")
+            } else {
+                android.util.Log.w(TAG, "Ignoring $kind result for unknown request $callbackId")
+            }
         }
     }
 }
