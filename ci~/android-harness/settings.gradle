@@ -9,6 +9,8 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
+        // SPIKE: resolves the locally published in-window superwall-android build.
+        mavenLocal()
         google()
         mavenCentral()
     }

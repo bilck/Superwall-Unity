@@ -96,7 +96,13 @@ class SuperwallUnityBridge {
 
     fun configure(apiKey: String, optionsJson: String?, hasPurchaseController: Boolean, completionCallbackId: String?) {
         val activity = UnityPlayer.currentActivity ?: return
-        val options = if (optionsJson != null) parseOptions(optionsJson) else null
+        // In-window is the Unity default: an activity-hosted paywall pauses Unity's player loop,
+        // so a C# purchase controller would never receive its purchase request.
+        val options =
+            (if (optionsJson != null) parseOptions(optionsJson) else null)
+                ?: SuperwallOptions().apply {
+                    paywalls.presentationHost = com.superwall.sdk.config.options.PaywallOptions.PresentationHost.IN_WINDOW
+                }
 
         val unityActivityProvider = object : com.superwall.sdk.misc.ActivityProvider {
             override fun getCurrentActivity(): Activity? = UnityPlayer.currentActivity
@@ -752,7 +758,8 @@ class SuperwallUnityBridge {
         Store.STRIPE -> "stripe"
         Store.PADDLE -> "paddle"
         Store.SUPERWALL -> "superwall"
-        Store.OTHER -> "other"
+        // `CUSTOM` (superwall-android 2.8+) has no C# counterpart yet.
+        Store.OTHER, Store.CUSTOM -> "other"
     }
 
     // `UNKNOWN` has no C# counterpart and is dropped, leaving `Entitlement.State` null.
@@ -951,6 +958,7 @@ class SuperwallUnityBridge {
     private fun parseOptions(optionsJson: String): SuperwallOptions? = try {
         val json = JSONObject(optionsJson)
         SuperwallOptions().apply {
+            paywalls.presentationHost = com.superwall.sdk.config.options.PaywallOptions.PresentationHost.IN_WINDOW
             if (json.has("localeIdentifier")) localeIdentifier = json.getString("localeIdentifier")
             if (json.has("isExternalDataCollectionEnabled")) isExternalDataCollectionEnabled = json.getBoolean("isExternalDataCollectionEnabled")
             if (json.has("isGameControllerEnabled")) isGameControllerEnabled = json.getBoolean("isGameControllerEnabled")
@@ -1018,6 +1026,12 @@ class SuperwallUnityBridge {
                 }
                 if (paywallsJson.has("useCachedTemplates")) paywalls.useCachedTemplates = paywallsJson.getBoolean("useCachedTemplates")
                 if (paywallsJson.has("timeoutAfter")) paywalls.timeoutAfter = paywallsJson.getDouble("timeoutAfter").seconds
+                if (paywallsJson.has("androidPresentation")) {
+                    paywalls.presentationHost = when (paywallsJson.getString("androidPresentation").lowercase()) {
+                        "activity" -> com.superwall.sdk.config.options.PaywallOptions.PresentationHost.ACTIVITY
+                        else -> com.superwall.sdk.config.options.PaywallOptions.PresentationHost.IN_WINDOW
+                    }
+                }
                 if (paywallsJson.has("restoreFailed")) {
                     val restoreJson = paywallsJson.getJSONObject("restoreFailed")
                     if (restoreJson.has("title")) paywalls.restoreFailed.title = restoreJson.getString("title")
