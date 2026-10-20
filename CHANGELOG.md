@@ -1,7 +1,7 @@
 # Changelog
 All notable changes to this package will be documented in this file.
 
-## [Unreleased]
+## [0.3.0]
 
 ### Enhancements
 * Android paywalls are now shown inside the game's activity by default, so Unity keeps running while a paywall is on screen. Before, the paywall opened in its own activity, which paused Unity's player loop. A C# purchase controller then never received the purchase request and the paywall spun forever, and every delegate callback was held until the paywall closed. Set `SuperwallOptions.Paywalls.AndroidPresentation = AndroidPaywallPresentation.Activity` to keep the old behaviour.
