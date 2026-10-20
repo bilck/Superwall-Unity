@@ -853,6 +853,7 @@ namespace Superwall
                 {
                     paywalls["timeoutAfter"] = options.Paywalls.TimeoutAfter.Value;
                 }
+                paywalls["androidPresentation"] = options.Paywalls.AndroidPresentation.ToString();
 
                 dict["paywalls"] = paywalls;
             }

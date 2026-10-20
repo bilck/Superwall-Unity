@@ -23,6 +23,12 @@ namespace Superwall.Internal
         private readonly Dictionary<string, Action<string>> _pendingAsyncCallbacks =
             new Dictionary<string, Action<string>>();
 
+        // Purchase/restore callbackIds native stopped waiting for. Bounded; completions may
+        // arrive off the main thread, so access is locked.
+        private const int MaxAbandonedPurchaseCallbacks = 32;
+        private readonly HashSet<string> _abandonedPurchaseCallbacks = new HashSet<string>();
+        private readonly Queue<string> _abandonedPurchaseCallbackOrder = new Queue<string>();
+
         public static void Initialize()
         {
             if (_instance != null) return;
@@ -141,6 +147,10 @@ namespace Superwall.Internal
                     break;
                 case "restorePurchases":
                     HandleRestorePurchases(data);
+                    break;
+                case "purchaseCancelled":
+                case "restoreCancelled":
+                    HandlePurchaseRequestCancelled(data);
                     break;
 
                 // --- Presentation handler methods ---
@@ -949,12 +959,18 @@ namespace Superwall.Internal
 
             var productId = GetString(data, "productId");
             var callbackId = GetString(data, "callbackId");
+            if (!IsPurchaseRequestPending(callbackId)) return;
 
-            PurchaseController.PurchaseFromAppStore(productId, (result) =>
+            var reply = CreatePurchaseReply(callbackId);
+            try
             {
-                var resultDict = SerializePurchaseResult(result);
-                SendResponseToNative(callbackId, resultDict);
-            });
+                PurchaseController.PurchaseFromAppStore(productId, reply);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Superwall] PurchaseFromAppStore threw: {e.Message}\n{e.StackTrace}");
+                reply(PurchaseResult.Failed(e.Message));
+            }
         }
 
         private void HandlePurchaseFromGooglePlay(Dictionary<string, object> data)
@@ -965,12 +981,18 @@ namespace Superwall.Internal
             var basePlanId = GetString(data, "basePlanId");
             var offerId = GetString(data, "offerId");
             var callbackId = GetString(data, "callbackId");
+            if (!IsPurchaseRequestPending(callbackId)) return;
 
-            PurchaseController.PurchaseFromGooglePlay(productId, basePlanId, offerId, (result) =>
+            var reply = CreatePurchaseReply(callbackId);
+            try
             {
-                var resultDict = SerializePurchaseResult(result);
-                SendResponseToNative(callbackId, resultDict);
-            });
+                PurchaseController.PurchaseFromGooglePlay(productId, basePlanId, offerId, reply);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Superwall] PurchaseFromGooglePlay threw: {e.Message}\n{e.StackTrace}");
+                reply(PurchaseResult.Failed(e.Message));
+            }
         }
 
         private void HandleRestorePurchases(Dictionary<string, object> data)
@@ -978,12 +1000,98 @@ namespace Superwall.Internal
             if (PurchaseController == null) return;
 
             var callbackId = GetString(data, "callbackId");
+            if (!IsPurchaseRequestPending(callbackId)) return;
 
-            PurchaseController.RestorePurchases((result) =>
+            var replied = false;
+            Action<RestorationResult> reply = (result) =>
             {
-                var resultDict = SerializeRestorationResult(result);
-                SendRestoreResponseToNative(callbackId, resultDict);
-            });
+                if (replied) return;
+                replied = true;
+                if (IsPurchaseCallbackAbandoned(callbackId))
+                {
+                    Debug.LogWarning($"[Superwall] Ignoring late restore result for cancelled request {callbackId}");
+                    return;
+                }
+                SendRestoreResponseToNative(callbackId, SerializeRestorationResult(result));
+            };
+            try
+            {
+                PurchaseController.RestorePurchases(reply);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Superwall] RestorePurchases threw: {e.Message}\n{e.StackTrace}");
+                reply(RestorationResult.Failed(e.Message));
+            }
+        }
+
+        // Native stopped waiting for this request (e.g. the paywall went away).
+        private void HandlePurchaseRequestCancelled(Dictionary<string, object> data)
+        {
+            var callbackId = GetString(data, "callbackId");
+            if (string.IsNullOrEmpty(callbackId)) return;
+
+            lock (_abandonedPurchaseCallbacks)
+            {
+                if (!_abandonedPurchaseCallbacks.Add(callbackId)) return;
+                _abandonedPurchaseCallbackOrder.Enqueue(callbackId);
+                while (_abandonedPurchaseCallbackOrder.Count > MaxAbandonedPurchaseCallbacks)
+                    _abandonedPurchaseCallbacks.Remove(_abandonedPurchaseCallbackOrder.Dequeue());
+            }
+        }
+
+        private bool IsPurchaseCallbackAbandoned(string callbackId)
+        {
+            if (string.IsNullOrEmpty(callbackId)) return false;
+            lock (_abandonedPurchaseCallbacks)
+            {
+                return _abandonedPurchaseCallbacks.Contains(callbackId);
+            }
+        }
+
+        // A request can sit in Unity's message queue (e.g. while the player is paused) after
+        // native has stopped waiting for it. Never start a store transaction for those.
+        private bool IsPurchaseRequestPending(string callbackId)
+        {
+            if (IsPurchaseCallbackAbandoned(callbackId))
+            {
+                Debug.LogWarning($"[Superwall] Skipping purchase controller request {callbackId}: cancelled by native");
+                return false;
+            }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (string.IsNullOrEmpty(callbackId)) return true;
+            try
+            {
+                if (!SuperwallBridgeAndroid.IsPurchaseControllerRequestPending(callbackId))
+                {
+                    Debug.LogWarning($"[Superwall] Skipping purchase controller request {callbackId}: no longer pending on native");
+                    return false;
+                }
+            }
+            catch (Exception e)
+            {
+                // Can't tell; fall back to running the request.
+                Debug.LogWarning($"[Superwall] Could not check purchase controller request {callbackId}: {e.Message}");
+            }
+#endif
+            return true;
+        }
+
+        // Replies at most once, and not at all once native has abandoned the request.
+        private Action<PurchaseResult> CreatePurchaseReply(string callbackId)
+        {
+            var replied = false;
+            return (result) =>
+            {
+                if (replied) return;
+                replied = true;
+                if (IsPurchaseCallbackAbandoned(callbackId))
+                {
+                    Debug.LogWarning($"[Superwall] Ignoring late purchase result for cancelled request {callbackId}");
+                    return;
+                }
+                SendResponseToNative(callbackId, SerializePurchaseResult(result));
+            };
         }
 
         #endregion

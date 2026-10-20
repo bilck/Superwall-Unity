@@ -34,6 +34,21 @@ namespace Superwall
         public bool ShouldShowWebPurchaseConfirmationAlert = false;
         public bool UseCachedTemplates = false;
         public float? TimeoutAfter = null;
+        /// <summary>
+        /// Android only. Where paywalls are shown. The default, <see cref="AndroidPaywallPresentation.InWindow"/>,
+        /// shows them inside the game's activity so Unity keeps running while a paywall is up, which a C#
+        /// purchase controller needs to receive purchase requests. <see cref="AndroidPaywallPresentation.Activity"/>
+        /// opens them in their own activity, which pauses Unity until the paywall closes.
+        /// </summary>
+        public AndroidPaywallPresentation AndroidPresentation = AndroidPaywallPresentation.InWindow;
+    }
+
+    public enum AndroidPaywallPresentation
+    {
+        /// <summary>Paywalls are shown as an overlay inside the game's activity. The default.</summary>
+        InWindow,
+        /// <summary>Paywalls open in their own Android activity, which pauses Unity while shown.</summary>
+        Activity
     }
 
     [Serializable]
