@@ -4,7 +4,10 @@ All notable changes to this package will be documented in this file.
 ## [Unreleased]
 
 ### Enhancements
-* Android paywalls are now shown inside the game's activity by default, so Unity keeps running while a paywall is on screen. Before, the paywall opened in its own activity, which paused Unity's player loop. A C# purchase controller then never received the purchase request and the paywall spun forever, and every delegate callback was held until the paywall closed. Set `SuperwallOptions.Paywalls.AndroidPresentation = AndroidPaywallPresentation.Activity` to keep the old behaviour. Requires superwall-android with the in-window host.
+* Android paywalls are now shown inside the game's activity by default, so Unity keeps running while a paywall is on screen. Before, the paywall opened in its own activity, which paused Unity's player loop. A C# purchase controller then never received the purchase request and the paywall spun forever, and every delegate callback was held until the paywall closed. Set `SuperwallOptions.Paywalls.AndroidPresentation = AndroidPaywallPresentation.Activity` to keep the old behaviour.
+
+### Dependencies
+* Android: bumped the `superwall-android` pin from 2.7.23 to 2.8.7, which adds the in-window paywall host, and the Google Play Billing pin from 8.0.0 to 9.1.0 to match it. `androidx.activity` stays at 1.10.1, so the compileSdk 35 requirement is unchanged. Games that also use Unity IAP get Billing 9.1.0 through Gradle's version resolution.
 
 ### Fixes
 * Android purchase controller requests that can't reach Unity now fail straight away instead of waiting for a reply that never comes. A request the native SDK has given up on is cancelled on the C# side and no longer starts a store transaction with no paywall on screen. A purchase controller that throws now replies `Failed`, and each request is answered at most once.
