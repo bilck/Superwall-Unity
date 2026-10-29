@@ -75,4 +75,4 @@ jobs:
 
       - name: Bridge JSON contract tests (JVM)
         working-directory: ci~/android-harness
-        run: gradle :SuperwallSDK:testReleaseUnitTest -PagpVersion=${{ matrix.agp }} --no-daemon --stacktrace
+        run: gradle :SuperwallSDK:testDebugUnitTest -PagpVersion=${{ matrix.agp }} --no-daemon --stacktrace

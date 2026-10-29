@@ -23,7 +23,7 @@ gradle.projectsEvaluated {
 }
 
 // JVM unit tests for the bridge's JSON contracts, kept in this harness (bridge-tests/) so nothing test-only
-// ships inside the Unity package. Run: gradle :SuperwallSDK:testReleaseUnitTest
+// ships inside the Unity package. Run: gradle :SuperwallSDK:testDebugUnitTest
 // org.json is put on the test classpath because android.jar only carries stubs of it.
 project(':SuperwallSDK') {
     // Build outputs stay in the harness (gitignored), never inside the shipped androidlib folder.
