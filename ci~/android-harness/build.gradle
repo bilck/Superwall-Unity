@@ -30,7 +30,13 @@ project(':SuperwallSDK') {
     layout.buildDirectory = rootProject.layout.projectDirectory.dir('build/SuperwallSDK')
     pluginManager.withPlugin('com.android.library') {
         android {
-            sourceSets.test.java.srcDirs += rootProject.file('bridge-tests/src/test/kotlin')
+            // srcDir(), not `srcDirs +=`: AGP 9's source-set DSL ignores the reassignment and the tests went
+            // NO-SOURCE (green with nothing run). Kotlin dirs are registered too where the DSL has them.
+            def testSources = rootProject.file('bridge-tests/src/test/kotlin')
+            sourceSets.test.java.srcDir(testSources)
+            if (sourceSets.test.hasProperty('kotlin')) {
+                sourceSets.test.kotlin.srcDir(testSources)
+            }
             testOptions.unitTests.returnDefaultValues = true
         }
         dependencies {
