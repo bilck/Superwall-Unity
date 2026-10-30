@@ -175,6 +175,15 @@ public class MyPurchaseController : IPurchaseController
         // Handle restore, then call:
         completion(RestorationResult.Restored());
     }
+
+    // Optional, Android only: products whose store is Custom in the Superwall dashboard.
+    // Without it, a custom-product purchase fails.
+    public void PurchaseFromCustomStore(string productId, Action<PurchaseResult> completion)
+    {
+        // Purchase through your own store or payment system, update the subscription
+        // status yourself (the SDK grants no entitlements for custom products), then call:
+        completion(PurchaseResult.Purchased());
+    }
 }
 
 // Pass it during configure:

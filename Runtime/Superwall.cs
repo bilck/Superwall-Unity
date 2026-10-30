@@ -779,6 +779,7 @@ namespace Superwall
             p.IsFamilyShareable = dict.ContainsKey("isFamilyShareable") && dict["isFamilyShareable"] is bool ifs && ifs;
             p.RegionCode = dict.ContainsKey("regionCode") ? dict["regionCode"] as string : null;
             p.Price = dict.ContainsKey("price") ? ToDoubleInvariant(dict["price"]) : 0;
+            p.IsCustomProduct = dict.ContainsKey("isCustomProduct") && dict["isCustomProduct"] is bool icp && icp;
 
             if (dict.ContainsKey("entitlements") && dict["entitlements"] is List<object> entList)
             {

@@ -47,5 +47,12 @@ namespace Superwall
         public bool IsFamilyShareable;
         public string RegionCode;
         public double Price;
+
+        /// <summary>
+        /// True for a custom-store product: its store is Custom in the Superwall dashboard and its details come
+        /// from the Superwall API instead of a platform store. Purchases of these reach
+        /// <see cref="IPurchaseController.PurchaseFromCustomStore"/>. Android only today; always false on iOS.
+        /// </summary>
+        public bool IsCustomProduct;
     }
 }

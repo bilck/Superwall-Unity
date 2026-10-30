@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this package will be documented in this file.
 
+## [Unreleased]
+
+### Enhancements
+* Android purchase controllers can sell custom-store products (products whose store is Custom in the Superwall dashboard, supported since superwall-android 2.8). The bridge overrode only the Google Play `purchase(activity, productDetails, ...)`, so the native SDK failed every custom-product purchase before C# heard of it. A custom product now reaches the new `IPurchaseController.PurchaseFromCustomStore(productId, completion)`; Google Play products keep the `PurchaseFromGooglePlay` route unchanged. `PurchaseFromCustomStore` is a default interface member that fails the purchase, so existing controllers compile and behave as before. `StoreProduct.IsCustomProduct` tells the two apart, and an entitlement from a custom store reports `ProductStore.Custom` instead of `Other`.
+
 ## [0.3.0]
 
 ### Enhancements

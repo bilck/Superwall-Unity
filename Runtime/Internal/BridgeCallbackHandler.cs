@@ -145,6 +145,9 @@ namespace Superwall.Internal
                 case "purchaseFromGooglePlay":
                     HandlePurchaseFromGooglePlay(data);
                     break;
+                case "purchaseFromCustomStore":
+                    HandlePurchaseFromCustomStore(data);
+                    break;
                 case "restorePurchases":
                     HandleRestorePurchases(data);
                     break;
@@ -991,6 +994,26 @@ namespace Superwall.Internal
             catch (Exception e)
             {
                 Debug.LogError($"[Superwall] PurchaseFromGooglePlay threw: {e.Message}\n{e.StackTrace}");
+                reply(PurchaseResult.Failed(e.Message));
+            }
+        }
+
+        private void HandlePurchaseFromCustomStore(Dictionary<string, object> data)
+        {
+            if (PurchaseController == null) return;
+
+            var productId = GetString(data, "productId");
+            var callbackId = GetString(data, "callbackId");
+            if (!IsPurchaseRequestPending(callbackId)) return;
+
+            var reply = CreatePurchaseReply(callbackId);
+            try
+            {
+                PurchaseController.PurchaseFromCustomStore(productId, reply);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Superwall] PurchaseFromCustomStore threw: {e.Message}\n{e.StackTrace}");
                 reply(PurchaseResult.Failed(e.Message));
             }
         }

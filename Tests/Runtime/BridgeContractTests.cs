@@ -584,6 +584,124 @@ namespace Superwall.Tests
             Assert.IsNull(controller.PendingRestore, "A cancelled request must not reach the controller");
             BridgeCallbackHandler.Instance.PurchaseController = null;
         }
+
+        // --- Custom-store purchases (Android: products whose store is Custom in the dashboard) ---
+
+        [UnityTest]
+        public IEnumerator PurchaseController_CustomStoreRequest_ReachesPurchaseFromCustomStore()
+        {
+            BridgeCallbackHandler.Initialize();
+            yield return null;
+            var controller = new MockPurchaseControllerContract();
+            BridgeCallbackHandler.Instance.PurchaseController = controller;
+
+            BridgeCallbackHandler.Instance.OnCallback(PurchaseRequest("purchaseFromCustomStore", "cb-custom"));
+            Assert.AreEqual("com.app.monthly", controller.CustomStoreProductId);
+            Assert.IsNotNull(controller.PendingPurchase, "Controller must receive the request");
+
+            LogAssert.Expect(LogType.Log,
+                new Regex(@"RespondToPurchaseController\(callbackId=cb-custom,.*""type"":""purchased"""));
+            controller.PendingPurchase(PurchaseResult.Purchased());
+            yield return null;
+
+            BridgeCallbackHandler.Instance.PurchaseController = null;
+        }
+
+        [UnityTest]
+        public IEnumerator PurchaseController_CustomStoreRequest_ControllerWithoutIt_RepliesFailed()
+        {
+            // A controller written before PurchaseFromCustomStore existed keeps compiling; the default
+            // implementation fails the purchase, which is what the native SDK did for it before.
+            BridgeCallbackHandler.Initialize();
+            yield return null;
+            BridgeCallbackHandler.Instance.PurchaseController = new StoreOnlyPurchaseController();
+
+            LogAssert.Expect(LogType.Log,
+                new Regex(@"RespondToPurchaseController\(callbackId=cb-custom-default,.*""type"":""failed"""));
+            BridgeCallbackHandler.Instance.OnCallback(PurchaseRequest("purchaseFromCustomStore", "cb-custom-default"));
+            yield return null;
+
+            BridgeCallbackHandler.Instance.PurchaseController = null;
+        }
+
+        [UnityTest]
+        public IEnumerator PurchaseController_CustomStoreThrows_RepliesFailed()
+        {
+            BridgeCallbackHandler.Initialize();
+            yield return null;
+            BridgeCallbackHandler.Instance.PurchaseController = new MockPurchaseControllerContract
+            {
+                Throw = true
+            };
+
+            LogAssert.Expect(LogType.Error, new Regex("PurchaseFromCustomStore threw"));
+            LogAssert.Expect(LogType.Log,
+                new Regex(@"RespondToPurchaseController\(callbackId=cb-custom-throw,.*""type"":""failed"""));
+            BridgeCallbackHandler.Instance.OnCallback(PurchaseRequest("purchaseFromCustomStore", "cb-custom-throw"));
+            yield return null;
+
+            BridgeCallbackHandler.Instance.PurchaseController = null;
+        }
+
+        [UnityTest]
+        public IEnumerator StoreProduct_IsCustomProduct_Deserializes()
+        {
+            BridgeCallbackHandler.Initialize();
+            yield return null;
+            var observer = new RegressionDelegate();
+            BridgeCallbackHandler.Instance.Delegate = observer;
+
+            SuperwallEventInfo EventFor(Dictionary<string, object> product)
+            {
+                BridgeCallbackHandler.Instance.OnCallback(Json.Serialize(new Dictionary<string, object>
+                {
+                    { "method", "handleSuperwallEvent" },
+                    { "data", new Dictionary<string, object>
+                        {
+                            { "eventType", "transaction_start" },
+                            { "params", new Dictionary<string, object>() },
+                            { "product", product },
+                        }
+                    },
+                }));
+                return observer.LastEvent;
+            }
+
+            var custom = EventFor(new Dictionary<string, object>
+            {
+                { "productIdentifier", "com.app.yearly" },
+                { "isCustomProduct", true },
+            }).Product;
+            var play = EventFor(new Dictionary<string, object>
+            {
+                { "productIdentifier", "com.app.monthly" },
+            }).Product;
+            BridgeCallbackHandler.Instance.Delegate = null;
+
+            Assert.IsTrue(custom.IsCustomProduct);
+            Assert.IsFalse(play.IsCustomProduct, "absent (iOS, older bridges) means not custom");
+        }
+
+        [Test]
+        public void ProductStore_CustomParses_AndKeepsTheExistingValues()
+        {
+            Assert.IsTrue(System.Enum.TryParse<ProductStore>("custom", true, out var store));
+            Assert.AreEqual(ProductStore.Custom, store);
+            // Appended last: values persisted or compared as numbers keep their meaning.
+            Assert.AreEqual(5, (int)ProductStore.Other);
+            Assert.AreEqual(6, (int)ProductStore.Custom);
+        }
+    }
+
+    /// <summary>
+    /// A purchase controller that implements only the store methods, as every controller written before
+    /// <see cref="IPurchaseController.PurchaseFromCustomStore"/> existed does.
+    /// </summary>
+    class StoreOnlyPurchaseController : IPurchaseController
+    {
+        public void PurchaseFromAppStore(string productId, System.Action<PurchaseResult> completion) { }
+        public void PurchaseFromGooglePlay(string productId, string basePlanId, string offerId, System.Action<PurchaseResult> completion) { }
+        public void RestorePurchases(System.Action<RestorationResult> completion) { }
     }
 
     /// <summary>
@@ -611,6 +729,15 @@ namespace Superwall.Tests
         {
             if (Throw) throw new System.InvalidOperationException("boom");
             PendingRestore = completion;
+        }
+
+        public string CustomStoreProductId;
+
+        public void PurchaseFromCustomStore(string productId, System.Action<PurchaseResult> completion)
+        {
+            if (Throw) throw new System.InvalidOperationException("boom");
+            CustomStoreProductId = productId;
+            PendingPurchase = completion;
         }
     }
 

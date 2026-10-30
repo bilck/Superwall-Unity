@@ -762,8 +762,8 @@ class SuperwallUnityBridge {
         Store.STRIPE -> "stripe"
         Store.PADDLE -> "paddle"
         Store.SUPERWALL -> "superwall"
-        // `CUSTOM` (superwall-android 2.8+) has no C# counterpart yet.
-        Store.OTHER, Store.CUSTOM -> "other"
+        Store.CUSTOM -> "custom"
+        Store.OTHER -> "other"
     }
 
     // `UNKNOWN` has no C# counterpart and is dropped, leaving `Entitlement.State` null.
@@ -913,6 +913,7 @@ class SuperwallUnityBridge {
         put("languageCode", product.languageCode)
         put("price", product.price.toString())
         put("productType", product.productType)
+        put("isCustomProduct", product.isCustomProduct)
     }
 
     private fun serializeRedemptionResult(result: RedemptionResult): JSONObject = JSONObject().apply {
@@ -1121,7 +1122,8 @@ class SuperwallUnityBridge {
         }
     }
 
-    private class UnityPurchaseController : PurchaseController {
+    // Internal (not private) so the bridge JVM tests can drive it.
+    internal class UnityPurchaseController : PurchaseController {
         private val pendingPurchases = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<PurchaseResult>>()
         private val pendingRestores = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<RestorationResult>>()
         // Bounded, insertion-ordered record of callbackIds whose awaiting coroutine was cancelled.
@@ -1129,22 +1131,36 @@ class SuperwallUnityBridge {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Unit>?): Boolean = size > 32
         }
 
+        // Google Play products: the SDK's default `purchase(activity, product, ...)` routes them here.
         override suspend fun purchase(
             activity: Activity,
             productDetails: ProductDetails,
             basePlanId: String?,
             offerId: String?
+        ): PurchaseResult = requestPurchase("purchaseFromGooglePlay", JSONObject().apply {
+            put("productId", productDetails.productId)
+            put("basePlanId", basePlanId ?: "")
+            put("offerId", offerId ?: "")
+        })
+
+        // Custom-store products (store == CUSTOM) have no ProductDetails; C# routes them to its own store.
+        // Everything else keeps the default route, which ends in the Google Play override above.
+        override suspend fun purchase(
+            activity: Activity,
+            product: StoreProduct,
+            basePlanId: String?,
+            offerId: String?
         ): PurchaseResult {
+            if (!product.isCustomProduct) return super.purchase(activity, product, basePlanId, offerId)
+            return requestPurchase("purchaseFromCustomStore", JSONObject().put("productId", product.productIdentifier))
+        }
+
+        private suspend fun requestPurchase(method: String, payload: JSONObject): PurchaseResult {
             val callbackId = java.util.UUID.randomUUID().toString()
             val deferred = CompletableDeferred<PurchaseResult>()
             pendingPurchases[callbackId] = deferred
 
-            val sent = sendToUnity("purchaseFromGooglePlay", JSONObject().apply {
-                put("productId", productDetails.productId)
-                put("basePlanId", basePlanId ?: "")
-                put("offerId", offerId ?: "")
-                put("callbackId", callbackId)
-            })
+            val sent = sendToUnity(method, payload.put("callbackId", callbackId))
             if (!sent) {
                 // C# never got the request, so no reply will ever come.
                 pendingPurchases.remove(callbackId)

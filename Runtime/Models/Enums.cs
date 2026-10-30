@@ -140,7 +140,10 @@ namespace Superwall
         Paddle,
         PlayStore,
         Superwall,
-        Other
+        Other,
+        // A custom store configured in the Superwall dashboard (superwall-android 2.8+). Appended last so the
+        // existing values keep their numbers.
+        Custom
     }
 
     [Serializable]
